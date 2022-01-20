@@ -16,6 +16,8 @@ static void lab1_switch_test(void);
 int
 kern_init(void) {
     extern char edata[], end[];
+
+    // edata 为指针开始， 将 end - edata 的地方， 都填充上 0 。
     memset(edata, 0, end - edata);
 
     cons_init();                // init the console
@@ -25,7 +27,7 @@ kern_init(void) {
 
     print_kerninfo();
 
-    grade_backtrace();
+    // grade_backtrace();
 
     pmm_init();                 // init physical memory management
 
@@ -37,7 +39,7 @@ kern_init(void) {
 
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()
     // user/kernel mode switch test
-    //lab1_switch_test();
+    lab1_switch_test();
 
     /* do nothing */
     while (1);
@@ -84,11 +86,27 @@ lab1_print_cur_status(void) {
 static void
 lab1_switch_to_user(void) {
     //LAB1 CHALLENGE 1 : TODO
+    // asm volatile ("int %0": : "i"(T_SWITCH_TOU));
+    asm volatile (
+                  // "sub $0x8, %%esp \n"
+                  "int %0 \n"
+                  //"movl %%ebp, %%esp"
+                  :
+                  : "i"(T_SWITCH_TOU)
+                  );
 }
 
 static void
 lab1_switch_to_kernel(void) {
     //LAB1 CHALLENGE 1 :  TODO
+    // asm volatile ("int %0":: "i"(T_SWITCH_TOK));
+     asm volatile (
+                   //"sub $0x8, %%esp \n"
+                  "int %0 \n"
+                  //"movl %%ebp, %%esp \n"
+                  : 
+                  : "i"(T_SWITCH_TOK)
+                  );
 }
 
 static void
@@ -97,8 +115,8 @@ lab1_switch_test(void) {
     cprintf("+++ switch to  user  mode +++\n");
     lab1_switch_to_user();
     lab1_print_cur_status();
-    cprintf("+++ switch to kernel mode +++\n");
-    lab1_switch_to_kernel();
-    lab1_print_cur_status();
+    //  cprintf("+++ switch to kernel mode +++\n");
+    //  lab1_switch_to_kernel();
+    //  lab1_print_cur_status();
 }
 

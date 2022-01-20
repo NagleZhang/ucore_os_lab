@@ -290,6 +290,25 @@ read_eip(void) {
  * */
 void
 print_stackframe(void) {
+    uint32_t ebp = read_ebp();
+    uint32_t eip = read_eip();
+    cprintf("let's debug stackframe. \n");
+    for( int i = 0; ebp != 0 && i < STACKFRAME_DEPTH; i ++ ) {
+        cprintf("current eip: 0x%x, ebp: 0x%x \n",eip, ebp);
+        print_debuginfo(eip-1);
+        uint32_t * current_ebp = ((uint32_t *)ebp)+2;
+        cprintf("Arguments: [");
+        for(int j = 0; j < 4 ; j++) {
+            cprintf(" (HEX: 0x%x STR: %s) ", current_ebp[j],current_ebp[j]);
+        }
+        cprintf("]\n\n");
+        // 因为 ebp 指向前面的一个 ebp， 所以，我们一直向前调用就可以了。
+        ebp = ((uint32_t *) ebp)[0];
+        eip = ((uint32_t *) ebp)[1];
+        // cprintf("prev eip: 0x%x , prev ebp: 0x%x \n",eip, ebp);
+
+    }
+    return;
      /* LAB1 YOUR CODE : STEP 1 */
      /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
       * (2) call read_eip() to get the value of eip. the type is (uint32_t);

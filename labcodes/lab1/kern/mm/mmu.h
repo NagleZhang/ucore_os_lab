@@ -61,7 +61,7 @@ struct gatedesc {
 
 /* *
  * Set up a normal interrupt/trap gate descriptor
- *   - istrap: 1 for a trap (= exception) gate, 0 for an interrupt gate
+ *   - istrap: 1for a trap (= exception) gate, 0 for an interrupt gate
  *   - sel: Code segment selector for interrupt/trap handler
  *   - off: Offset in code segment for interrupt/trap handler
  *   - dpl: Descriptor Privilege Level - the privilege level required

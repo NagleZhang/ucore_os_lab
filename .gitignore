@@ -1,4 +1,8 @@
 .idea/*
 os/target/*
+labcodes/*/bin/*
+labcodes/*/obj/*
+labcodes_answer/*/bin/*
+labcodes_answer/*/obj/*
 os/.idea/*
 Cargo.lock

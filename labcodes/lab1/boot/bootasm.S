@@ -57,6 +57,7 @@ seta20.2:
 
 .code32                                             # Assemble for 32-bit mode
 protcseg:
+  # 为啥段寄存器初始值都是 16（0x10) ? 是因为指向了gdt 吗？
     # Set up the protected-mode data segment registers
     movw $PROT_MODE_DSEG, %ax                       # Our data segment selector
     movw %ax, %ds                                   # -> DS: Data Segment

@@ -52,7 +52,7 @@ struct pushregs {
     uint32_t reg_edi;
     uint32_t reg_esi;
     uint32_t reg_ebp;
-    uint32_t reg_oesp;            /* Useless */
+    uint32_t reg_oesp;
     uint32_t reg_ebx;
     uint32_t reg_edx;
     uint32_t reg_ecx;

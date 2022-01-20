@@ -46,6 +46,20 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    extern uintptr_t __vectors[];
+    for (int i = 0; i < 256; i++ ) {
+        SETGATE(idt[i],       // gate , trap 会通过此门， 然后根据门内信息决定中断处理例程, 也就是 vector 里面对应的处理例程。
+                0,            // 这个应该是用来处理 trap， 而非 exception 的。
+                GD_KTEXT,     // 既然是 trap， 那么 idt 的代码应该是属于内核， 所以 code 的位置应该也是属于内核段。
+                __vectors[i], // 这个内容会放到寄存器的后面 16 位， 从而根据这个 16 位， 加上 gdt 里面的 idt 的地址，确定执行哪一个例程
+                DPL_KERNEL    // 与代码段的理解同理， 这个也应该是属于 kernel 态权限。
+                );
+    }
+
+    SETGATE(idt[T_SWITCH_TOK], 0,GD_UTEXT , __vectors[T_SWITCH_TOK], DPL_USER);
+
+    // 告诉寄存器一声， 我好了；
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -147,6 +161,10 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+        ticks++;
+        if (ticks % TICK_NUM == 0){
+            print_ticks();
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
