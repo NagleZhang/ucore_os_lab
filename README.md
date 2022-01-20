@@ -2,8 +2,19 @@ INTRODUCTION
 ============
 ucore os labs was used as OS Experiments in OS Course Of Dept. of Computer Science & Technology, Tsinghua University.
 
+- [ucore os lab docs](https://chyyuu.gitbooks.io/ucore_os_docs/content/)
+- [rcore os lab docs](https://rcore-os.github.io/rCore-Tutorial-deploy/)
+
 NEWS
 ====
+- 2020.07.01: [Rust-based OS Tutorial Summer of Code 2020](https://github.com/rcore-os/rCore/wiki/os-tutorial-summer-of-code)
+- 2020.02.21: add branch ricv64-opensbi for ucore labs which can run after opensbi boots. Runji Wang's great work!
+- 2020.01.10: [Playground of Learning RUST by Example](https://www.shiyanlou.com/courses/1499)
+- 2020.01.10: [Playground of Learning OS in RUST, Verification Code: wfkblCQp ](https://www.shiyanlou.com/courses/1481)
+- 2019.12.15: [OS Design/Impl Tutorial on OS2ATC 2019](https://github.com/rcore-os/rCore/wiki/os-tutorial-os2atc)
+- 2019.09.11: [OS Trainning Course Autumn Semester](http://os.cs.tsinghua.edu.cn/oscourse/OsTrain2019)
+- 2019.07.07: [Tutorial of rCore Summer of Code](https://github.com/rcore-os/rCore/wiki/tutorial)
+- 2019.03.01: [step_by_step rcore os labs from scratch](https://github.com/LearningOS/rcore_step_by_step) is in progress. Thanks Qingling Pan, Fengyuan Liu's great work!
 - 2019.01.19: [rcore os labs(pre-alpha version)](https://github.com/oscourse-tsinghua/rcore_plus/tree/lab8-rv32) on RISC-V(32bit) were released. Thanks Runji Wang, Wei Zhang, Zhenyang Dai, Jiajie Chen, Yuekai Jia, Cheng Lu...'s great work!
 - 2019.01.19: [rcore os labs(pre-pre-alpha version)](https://github.com/oscourse-tsinghua/rcore_plus/tree/lab8-aarch64) on Raspberry Pi(AARCH 64bit) were released. Thanks Yuekai Jia, Runji Wang, Jiajie Chen...'s great work!
 - 2018.04.03：ucore os labs were ported on RISC-V(64bit) CPU（privileged arch spec 1.10). You can access [repo's riscv64-priv-1.10 branch](https://github.com/chyyuu/ucore_os_lab/tree/riscv64-priv-1.10). Thanks Zhengxing Shi's great work!
