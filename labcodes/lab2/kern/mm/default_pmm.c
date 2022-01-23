@@ -95,8 +95,8 @@
  */
 free_area_t free_area;
 
-#define free_list (free_area.free_list)
-#define nr_free (free_area.nr_free)
+#define free_list (free_area.free_list) // the list header
+#define nr_free (free_area.nr_free) // free pages in this free list
 
 static void
 default_init(void) {
@@ -116,6 +116,7 @@ default_init_memmap(struct Page *base, size_t n) {
     base->property = n;
     SetPageProperty(base);
     nr_free += n;
+    // 链表的正常添加操作.
     list_add(&free_list, &(base->page_link));
 }
 

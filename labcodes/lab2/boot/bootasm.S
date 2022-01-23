@@ -8,7 +8,8 @@
 .set PROT_MODE_CSEG,        0x8                     # kernel code segment selector
 .set PROT_MODE_DSEG,        0x10                    # kernel data segment selector
 .set CR0_PE_ON,             0x1                     # protected mode enable flag
-.set SMAP,                  0x534d4150
+.set SMAP,                  0x534d4150              # ASCII for 'SMAP'
+# from wikipedia: The operating system shall allocate an SMAP buffer in memory (20 bytes buffer). Then set registers as specified in "Input" table. On first call, EBX should be set to 0. Next step is to call INT 0x15. If no error, the interrupt call returns with CF clear and the buffer filled with data representing first region of the memory map. EBX is updated by BIOS so that when the OS calls the routine again, The next region is returned in the buffer. BIOS sets EBX to zero if all done
 
 # start address should be 0:7c00, in real mode, the beginning address of the running bootloader
 .globl start

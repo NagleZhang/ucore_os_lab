@@ -189,35 +189,69 @@ nr_free_pages(void) {
 /* pmm_init - initialize the physical memory management */
 static void
 page_init(void) {
+    // 在 0xC0008000 上面打上一个指针.
     struct e820map *memmap = (struct e820map *)(0x8000 + KERNBASE);
     uint64_t maxpa = 0;
 
+    /* *
+     * memory: 0009fc00, 79KB [00000000, 0009fbff], type = 1.
+     * memory: 00000400, 80B  [0009fc00, 0009ffff], type = 2.
+     * memory: 00010000, 8KB  [000f0000, 000fffff], type = 2.
+     * memory: 07ee0000, 15MB [00100000, 07fdffff], type = 1.
+     * memory: 00020000, 16KB [07fe0000, 07ffffff], type = 2.
+     * memory: 00040000, 32KB [fffc0000, ffffffff], type = 2.
+     * */
     cprintf("e820map:\n");
     int i;
     for (i = 0; i < memmap->nr_map; i ++) {
         uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
-        cprintf("  memory: %08llx, [%08llx, %08llx], type = %d.\n",
-                memmap->map[i].size, begin, end - 1, memmap->map[i].type);
+        uint64_t size = memmap->map[i].size;
+        cprintf("  memory: %08llx , [%08llx, %08llx], type = %d.\n",
+                size, begin, end - 1, memmap->map[i].type);
         if (memmap->map[i].type == E820_ARM) {
             if (maxpa < end && begin < KMEMSIZE) {
                 maxpa = end;
             }
         }
     }
+    cprintf("maxpa: 0x%x, KMEMSIZE: 0x%x\n", maxpa,KMEMSIZE);
+    cprintf("maxpa: %d, KMEMSIZE: %d\n", maxpa,KMEMSIZE);
     if (maxpa > KMEMSIZE) {
         maxpa = KMEMSIZE;
+        cprintf("block maxpa: 0x%x, KMEMSIZE: 0x%x\n", maxpa,KMEMSIZE);
     }
-
+    cprintf("maxpa: 0x%x, KMEMSIZE: 0x%x\n", maxpa,KMEMSIZE);
     extern char end[];
 
     npage = maxpa / PGSIZE;
+
+    cprintf("how many pages: %d\n", npage);
+
+    /* Round up to the nearest multiple of PAGESIZE
+     * 向上取整,
+     * pages: virtual address of physicall page array
+     */
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);
 
     for (i = 0; i < npage; i ++) {
+        // 遍历 pages , 并且 set page as not reserved
         SetPageReserved(pages + i);
     }
 
+    if (1>2) {
+        cprintf("1");
+    }
+    if (1<2) {
+        cprintf("2");
+    }
+    /* *
+     * PADDR: takes a kernel virtual address (an address that points above KERNBASE),
+     * where the machine's maximum 256MB of physical memory is mapped and returns the
+     * corresponding physical address.  It panics if you pass it a non-kernel virtual address.
+     * 所以这个地方的作用是, 返回一个物理地址,应该是最高位吧.
+     * */
     uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);
+    cprintf("Free Mem: 0x%x, KMEMSIZE: 0x%x.\n", freemem, KMEMSIZE);
 
     for (i = 0; i < memmap->nr_map; i ++) {
         uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
@@ -232,6 +266,8 @@ page_init(void) {
                 begin = ROUNDUP(begin, PGSIZE);
                 end = ROUNDDOWN(end, PGSIZE);
                 if (begin < end) {
+                    cprintf("BEGIN Mem Address: 0x%x, END Mem Address: 0x%x, SIZE: 0x%x\n", begin, end, end-begin);
+                    // 应该是 15mb 的内存. 第二个参数, 传递的是页面的数量. 
                     init_memmap(pa2page(begin), (end - begin) / PGSIZE);
                 }
             }
@@ -277,19 +313,25 @@ pmm_init(void) {
     // We've already enabled paging
     boot_cr3 = PADDR(boot_pgdir);
 
-    //We need to alloc/free the physical memory (granularity is 4KB or other size). 
-    //So a framework of physical memory manager (struct pmm_manager)is defined in pmm.h
-    //First we should init a physical memory manager(pmm) based on the framework.
-    //Then pmm can alloc/free the physical memory. 
-    //Now the first_fit/best_fit/worst_fit/buddy_system pmm are available.
+    // We need to alloc/free the physical memory (granularity is 4KB or other size). 
+    // So a framework of physical memory manager (struct pmm_manager)is defined in pmm.h
+    // First we should init a physical memory manager(pmm) based on the framework.
+    // Then pmm can alloc/free the physical memory. 
+    // Now the first_fit/best_fit/worst_fit/buddy_system pmm are available.
+    cprintf("init_pmm_manager\n");
     init_pmm_manager();
 
     // detect physical memory space, reserve already used memory,
     // then use pmm->init_memmap to create free page list
+    cprintf("page_init\n");
     page_init();
 
-    //use pmm->check to verify the correctness of the alloc/free function in a pmm
+    // use pmm->check to verify the correctness of the alloc/free function in a pmm
+    // cprintf("start of alloc check.\n\n");
+
     check_alloc_page();
+
+    cprintf("end of alloc check.\n");
 
     check_pgdir();
 
