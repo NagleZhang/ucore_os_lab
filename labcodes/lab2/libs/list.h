@@ -18,6 +18,7 @@ struct list_entry {
     struct list_entry *prev, *next;
 };
 
+// 这个就是一个好的代码习惯, 一旦需要重构的时候, 上一层的东西修改起来就会很方便.
 typedef struct list_entry list_entry_t;
 
 static inline void list_init(list_entry_t *elm) __attribute__((always_inline));
@@ -140,6 +141,7 @@ list_prev(list_entry_t *listelm) {
  * */
 static inline void
 __list_add(list_entry_t *elm, list_entry_t *prev, list_entry_t *next) {
+    // 就是把第一个参数,放在 2, 3 个参数的中间.
     prev->next = next->prev = elm;
     elm->next = next;
     elm->prev = prev;

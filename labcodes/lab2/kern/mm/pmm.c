@@ -229,26 +229,25 @@ page_init(void) {
 
     /* Round up to the nearest multiple of PAGESIZE
      * 向上取整,
+     * 这个地方, 是把 Page 与 end 进行关联.
+     * end 转换成 Page struct .
      * pages: virtual address of physicall page array
      */
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);
 
     for (i = 0; i < npage; i ++) {
-        // 遍历 pages , 并且 set page as not reserved
+        // 通过 page 作为数组地址的偏移地址, 遍历 pages , 并且 set page as not reserved
+        // 就是说, 把 page 的 flag 都设置为 0
         SetPageReserved(pages + i);
     }
 
-    if (1>2) {
-        cprintf("1");
-    }
-    if (1<2) {
-        cprintf("2");
-    }
     /* *
      * PADDR: takes a kernel virtual address (an address that points above KERNBASE),
      * where the machine's maximum 256MB of physical memory is mapped and returns the
      * corresponding physical address.  It panics if you pass it a non-kernel virtual address.
+     * 简单来说, 就是返回内核的物理页面.
      * 所以这个地方的作用是, 返回一个物理地址,应该是最高位吧.
+     * Page 这个数据结构本身,就是用来管理物理页?
      * */
     uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);
     cprintf("Free Mem: 0x%x, KMEMSIZE: 0x%x.\n", freemem, KMEMSIZE);

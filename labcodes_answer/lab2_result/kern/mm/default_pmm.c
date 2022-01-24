@@ -106,6 +106,7 @@ default_init(void) {
 
 static void
 default_init_memmap(struct Page *base, size_t n) {
+    // 这个地方, 实际上就是把初始化出来的链表, 与页的 array 进行关联.
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
@@ -179,9 +180,13 @@ default_free_pages(struct Page *base, size_t n) {
     }
     nr_free += n;
     le = list_next(&free_list);
+    // * 这个地方只是做一个检查, 没有执行任何具体的事情.
+    // * 确保释放的page, 按照顺序放在链表里面.
+    // 前面的理解是错误的, 这个地方主要是要找到链表存放的位置, 目的应该是确保按序存放.
     while (le != &free_list) {
         p = le2page(le, page_link);
         if (base + base->property <= p) {
+            // 确保 p 和 base 不相邻, 如果相邻,那么应该组合起来.
             assert(base + base->property != p);
             break;
         }

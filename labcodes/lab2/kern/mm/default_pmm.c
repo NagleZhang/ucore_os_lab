@@ -40,6 +40,7 @@
  * `page_number`). In order to initialize a free block, firstly, you should
  * initialize each page (defined in memlayout.h) in this free block. This
  * procedure includes:
+
  *  - Setting the bit `PG_property` of `p->flags`, which means this page is
  * valid. P.S. In function `pmm_init` (in pmm.c), the bit `PG_reserved` of
  * `p->flags` is already set.
@@ -51,7 +52,15 @@
  *  After that, We can use `p->page_link` to link this page into `free_list`.
  * (e.g.: `list_add_before(&free_list, &(p->page_link));` )
  *  Finally, we should update the sum of the free memory blocks: `nr_free += n`.
+
  * (4) `default_alloc_pages`:
+ *  首先去链表当中, 找到第一个空闲的分区.
+ *  Page struct 里面定义了, reserved 为0 , 就是没有被占用, 第一个, 就是我们想要的, 所以我们要从  pages 这个数组里面去
+ *  取出自己想要的大小.
+ *  然后, 就把这个区域, 从 freemem 当中 unlink 出来.
+ *  Page 这个 struct 有一个 trick, 就是放在一个列表当中, 然后专门配备了一个字段, 叫做 Priority , 如果 >0 , 代表了后面的空闲page 的数量.
+ *  相当于领头 page 的感觉. 代表局部 page 数量的.
+ *  而 nr_free 则像一个 global 的 page 数量.
  *  Search for the first free block (block size >= n) in the free list and reszie
  * the block found, returning the address of this block as the address required by
  * `malloc`.
@@ -101,9 +110,13 @@ free_area_t free_area;
 static void
 default_init(void) {
     list_init(&free_list);
+    //  所以这个地方, nr_free 应该是不为零, 应该设置为 page 的数量?
     nr_free = 0;
+    // 这个 free_list 还没有指向到 page. 所以还和 free_page 之间建立连接.
 }
 
+// 这个  function 在 pmm_init 的时候会被调用.
+// 15mb 的起始位置, 以及 page 的数量.
 static void
 default_init_memmap(struct Page *base, size_t n) {
     assert(n > 0);
@@ -114,10 +127,37 @@ default_init_memmap(struct Page *base, size_t n) {
         set_page_ref(p, 0);
     }
     base->property = n;
+    // page property 记录了
     SetPageProperty(base);
+    // 修改 free 的 page 的数量.
     nr_free += n;
     // 链表的正常添加操作.
-    list_add(&free_list, &(base->page_link));
+    /* *
+     * result 里面, 使用的是 list_add_before. list_add 默认使用的是 list_add_after
+     * 为什么?
+     * free_list -> page_link -> free_list.next
+     * list_add(&free_list, &(base->page_link));
+     * free_list.prev -> page_link -> free_list
+     * 这个时候, 链表里面只有一个节点, 也就是 page_link 这个地址, 也就是 15mb.
+     * 如果需要申请, 就是看看申请的大小是多少, 解析成对应的页面数量, 然后修改 page 的 struct
+     * 然后把这个再放入到链表当中.
+    * */
+    list_add_before(&free_list, &(base->page_link));
+    // 这个地方, 实际上就是把初始化出来的链表, 与页的 array 进行关联.
+    /*
+    assert(n > 0);
+    struct Page *p = base;
+    for (; p != base + n; p ++) {
+        assert(PageReserved(p));
+        p->flags = p->property = 0;
+        set_page_ref(p, 0);
+    }
+    base->property = n;
+    SetPageProperty(base);
+    nr_free += n;
+    list_add_before(&free_list, &(base->page_link));
+    */
+
 }
 
 static struct Page *
@@ -128,21 +168,33 @@ default_alloc_pages(size_t n) {
     }
     struct Page *page = NULL;
     list_entry_t *le = &free_list;
+    // 这个地方, 就开始把物理地址, 链表地址记录的page, 开始遍历, 给到需要 allocate 的进程.
+    int count = 0;
     while ((le = list_next(le)) != &free_list) {
+        count++;
         struct Page *p = le2page(le, page_link);
         if (p->property >= n) {
+            // 如果这个页够 size 的话, 执行下面的
+            //cprintf("page property: %d\n", p->property);
             page = p;
             break;
         }
     }
+    // unlink allocate 到的 page. 应该根据空间进行 unlink
+    //cprintf("allocated page property: %d\n", page->property);
+    //cprintf("allocated page address: %x\n", page);
     if (page != NULL) {
-        list_del(&(page->page_link));
         if (page->property > n) {
-            struct Page *p = page + n;
-            p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
+            struct Page *q = page + n;
+            q->property = page->property - n;
+            SetPageProperty(q);
+            //cprintf("get property after allocated: %d\n", q->property);
+            //cprintf("get flag after allocated: %d\n", q->flags);
+            list_add_after(&(page->page_link), &(q->page_link));
+        }
+        list_del(&(page->page_link));
         nr_free -= n;
+        //cprintf("nr_free is: %d\n", nr_free);
         ClearPageProperty(page);
     }
     return page;
@@ -159,8 +211,17 @@ default_free_pages(struct Page *base, size_t n) {
     }
     base->property = n;
     SetPageProperty(base);
+    // :upon:, 就完成了需要 free 页面的初始化工作.
+    // :below:, 需要把这些初始化的 page 放到链表当中管理起来;
     list_entry_t *le = list_next(&free_list);
     while (le != &free_list) {
+        // 这个地方如何理解? 应该是说, 遍历链表的每一项.
+        // 找到检查需要释放的 page 在 free_list 的隔壁.
+        // 有两种情况:
+        //  第一种就是 base 在释放的前面, 进入第一个 if.需要执行的事情是, 把 base 和 page 组合起来,
+        //        base 作为起始地址, 加入链表.
+        //  第二种是 base 在遍历的 page 后面, 进入第二个 if. 需要做的事情是, 把 page 和 base 组合起来,
+        //        page 作为起始地址, 加入链表.
         p = le2page(le, page_link);
         le = list_next(le);
         if (base + base->property == p) {
@@ -176,7 +237,20 @@ default_free_pages(struct Page *base, size_t n) {
         }
     }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+
+    // 再一次遍历链表, 在链表当中找到合适的位置来存放, 确保顺序.
+    le = list_next(&free_list);
+    while(le != &free_list) {
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            assert(base + base->property != p);
+            break;
+        }
+        le = list_next(le);
+    }
+    // 把我们释放出来的 page ,放在我们前面得到的位置前面, 因为 <=
+    list_add_before(le, &(base->page_link));
+
 }
 
 static size_t
