@@ -359,15 +359,22 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
-    pde_t *pdep = &pgdir[PDX(la)];
-    if (!(*pdep & PTE_P)) {
+    // page directory index
+    pde_t *pdep = &pgdir[PDX(la)]; // 这个地方应该是物理地址吧. 所以, 需要返回的是一个 pte 的 virtual address
+    if (!(*pdep & PTE_P)) { // 判断这个地方 PTE_P 的位是否设置, 话句话说, 就是这个地方是否存在. 如果不存在的话:
+        // 申请一个页面, 获取其物理地址, 在上面执行一些初始化的工作.
+        // 这一次应该是做初始化的工作, 或者说建立第二级页表.
         struct Page *page;
-        if (!create || (page = alloc_page()) == NULL) {
+        if (!create || (page = alloc_page()) == NULL) { // 如果不 create 或者 allocate page 为空的时候, 返回 null
             return NULL;
         }
         set_page_ref(page, 1);
+        // 首先把页面转换成物理地址.
         uintptr_t pa = page2pa(page);
+        // 物理地址再转换成 kernel 的 virtual address
+        // 在 virtual address 的地方, PGSIZE 的空间全部设置为 0
         memset(KADDR(pa), 0, PGSIZE);
+        // 将 pa 置为 可读可写.
         *pdep = pa | PTE_U | PTE_W | PTE_P;
     }
     return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
@@ -443,6 +450,14 @@ page_remove(pde_t *pgdir, uintptr_t la) {
 //  perm:  the permission of this Page which is setted in related pte
 // return value: always 0
 //note: PT is changed, so the TLB need to be invalidate 
+/* *
+ * 我开始 confuse 了. 这个地方插入一个 page, 需要几个参数:
+ * 1. page directory.
+ * 2. page
+ * 3. virtaul address.
+ * 是不是可以这么理解, 这个地方, 就是把 page 和 virtual address 进行映射, 再设置对应的 permission.
+ * 那为什么需要 pagedirectory? 感觉宏指令就足够了. 因为 page directory 的起始地址不是存储在 cr3 当中吗?
+ * */
 int
 page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
     pte_t *ptep = get_pte(pgdir, la, 1);

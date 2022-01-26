@@ -330,8 +330,6 @@ pmm_init(void) {
 
     check_alloc_page();
 
-    cprintf("end of alloc check.\n");
-
     check_pgdir();
 
     static_assert(KERNBASE % PTSIZE == 0 && KERNTOP % PTSIZE == 0);
@@ -359,6 +357,7 @@ pmm_init(void) {
 }
 
 //get_pte - get pte and return the kernel virtual address of this pte for la
+// 为线性地址获取一个 kernel virtual address, 作为 page table entry
 //        - if the PT contians this pte didn't exist, alloc a page for PT
 // parameter:
 //  pgdir:  the kernel virtual base address of PDT
@@ -367,6 +366,25 @@ pmm_init(void) {
 // return vaule: the kernel virtual address of this pte
 pte_t *
 get_pte(pde_t *pgdir, uintptr_t la, bool create) {
+    /* *
+     * 问题:
+     * 我们之前, 已经做了 page init 的工作, 创建了一个链表, 叫做 free_list. 然后, 我们实现了 allocate, 就是申请一个 page.
+     * 这个申请的过程, 实际上就是先去占个位置, 然后把占的这一块区域给到链表, 让链表管理起来.
+     * 现在我们需要做的事情是什么?
+     * 页表, 也就是多级页表的功能, 其中, 从 page directory -> page table entry -> page
+     * 也就是说, 这个 get_pte 就是 get page table entry 的这个功能.
+     * 需要 get page entry ,需要几个信息:
+     *  1. page directory
+     *  2. offset
+     * 原理课里面, 涉及到的信息, 就是这两个.
+     * 但是, 这个代码似乎不太一样, 所以, 更加具体一些, 是线性地址, 转换成物理地址.
+     * 所以, 要转换, 那么不能避免的就是要和之前的页表进行交互.
+     * 困惑的点在于:
+     *  1. page table entry 在什么位置? 也是在 15m 的空间内吗?
+     *  2. page table entry 本身, 需要被页表进行管理吗?
+     *  3. 我们现在假设 pte 不需要被页表进行管理, 那么, 我们直接来操作.
+     * */
+
     /* LAB2 EXERCISE 2: YOUR CODE
      *
      * If you need to visit a physical address, please use KADDR()
@@ -390,6 +408,7 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      */
 #if 0
     pde_t *pdep = NULL;   // (1) find page directory entry
+
     if (0) {              // (2) check if entry is not present
                           // (3) check if creating is needed, then alloc page for page table
                           // CAUTION: this page is used for page table, not for common data page
@@ -398,13 +417,39 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
                           // (6) clear page content using memset
                           // (7) set page directory entry's permission
     }
-    return NULL;          // (8) return page table entry
+    return pte;          // (8) return page table entry
 #endif
+    // 写到这里, 我觉得可以 return 了...
+    // page directory entry page
+    pte_t *pdep = &pgdir[PDX(la)]; // 这个地方, 还只能是一个物理地址. 但是我需要返回一个页面, 包含page table entry
+    if (!(*pdep & PTE_P)) { // (2) check if entry is not present, if not , let's create a new entry.
+        struct Page *page;
+        if (!create || (page = alloc_page()) == NULL ) { // if no need create, or no memory
+            return NULL;
+        }
+        set_page_ref(page, 1);
+        // translate page to physical address
+        uintptr_t pa = page2pa(page);
+        // 所以 mem set 用的全部都是 la.
+        memset(KADDR(pa) ,0, PGSIZE);
+        // (7) set page directory entry's permission
+        *pdep = pa | PTE_P | PTE_U | PTE_W; // now it's physical address , we need translate it to la.
+    }
+
+    // 直接转换是有风险的, 因为 page table entry 的话,
+    // PDE_ADDR 的原因是, 确保位的准确性.
+    // 紧接着, 从这个 directory 当中获取到 la 对应的 table entry.
+    // 最后, 转换成虚拟地址. 返回.
+    // 所以返回的 page table entry 是 virtual address
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 }
 
-//get_page - get related Page struct for linear address la using PDT pgdir
+// get_page - get related Page struct for linear address la using PDT pgdir
+// 获取一个 la 所需要的 page
 struct Page *
 get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
+    // 第三个参数为0 , 代表不创建 pte
+    // page table entry page 的地址.
     pte_t *ptep = get_pte(pgdir, la, 0);
     if (ptep_store != NULL) {
         *ptep_store = ptep;
@@ -445,6 +490,23 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+
+    if (*ptep & PTE_P) { //(1) check if this page table entry is present
+        struct Page *page = pte2page(*ptep);//(2) find corresponding page to pte
+
+        //(3) decrease page reference
+        //(4) and free this page when page reference reachs 0
+        //for(;page_ref_dec(page) >0;){}
+        if (page_ref_dec(page) == 0) {
+            free_page(page);
+        }
+
+        //(5) clear second page table entry
+        *ptep = 0;
+        //(6) flush tlb
+        tlb_invalidate(pgdir, la);
+    }
+
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte
@@ -457,6 +519,8 @@ page_remove(pde_t *pgdir, uintptr_t la) {
 }
 
 //page_insert - build the map of phy addr of an Page with the linear addr la
+// 使用线性地址创建一个页面, 包含物理地址的映射
+// 将 page 
 // paramemters:
 //  pgdir: the kernel virtual base address of PDT
 //  page:  the Page which need to map
@@ -466,6 +530,8 @@ page_remove(pde_t *pgdir, uintptr_t la) {
 //note: PT is changed, so the TLB need to be invalidate 
 int
 page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
+    // 这个地方就是从 page directory 里面获取到对应的 page table entry 吧.
+    // 第三个参数为1, 代表创建page table entry
     pte_t *ptep = get_pte(pgdir, la, 1);
     if (ptep == NULL) {
         return -E_NO_MEM;
@@ -480,16 +546,21 @@ page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
             page_remove_pte(pgdir, la, ptep);
         }
     }
+    // PTE_P           0x001
+    // 下面实际上就是把最后一位置为1.
     *ptep = page2pa(page) | PTE_P | perm;
     tlb_invalidate(pgdir, la);
     return 0;
 }
 
 // invalidate a TLB entry, but only if the page tables being
+// TLB: 快表. Translation Lookaside Buffer
 // edited are the ones currently in use by the processor.
 void
 tlb_invalidate(pde_t *pgdir, uintptr_t la) {
+    // rcr3 , read cr3 寄存器.
     if (rcr3() == PADDR(pgdir)) {
+        // invlpg 是一个指令, 用于执行刷新 tlb
         invlpg((void *)la);
     }
 }
@@ -503,6 +574,7 @@ check_alloc_page(void) {
 static void
 check_pgdir(void) {
     assert(npage <= KMEMSIZE / PGSIZE);
+    // PGOFF: page offset
     assert(boot_pgdir != NULL && (uint32_t)PGOFF(boot_pgdir) == 0);
     assert(get_page(boot_pgdir, 0x0, NULL) == NULL);
 

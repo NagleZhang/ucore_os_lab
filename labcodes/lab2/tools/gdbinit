@@ -1,4 +1,3 @@
 file bin/kernel
 target remote :1234
-b page_init
-b check_alloc_page
+b basic_check
