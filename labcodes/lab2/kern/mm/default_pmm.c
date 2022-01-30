@@ -161,6 +161,17 @@ default_init_memmap(struct Page *base, size_t n) {
 }
 
 static struct Page *
+buddy_alloc_pages(size_t n) {
+    assert (n>0);
+    if (n>nr_free) {
+        return NULL;
+    }
+    // 修改 size_t n 为 2 的 n 次方.
+
+    // 遍历链表, 把链表当中的 Page 遍历一遍, 看看能否找到需要的内存块.
+    // 如果找不到;
+}
+static struct Page *
 default_alloc_pages(size_t n) {
     assert(n > 0);
     if (n > nr_free) {
@@ -192,6 +203,8 @@ default_alloc_pages(size_t n) {
             //cprintf("get flag after allocated: %d\n", q->flags);
             list_add_after(&(page->page_link), &(q->page_link));
         }
+        // 不理解了， 这个地方不应该还再创建一个新的节点，用来放空闲的区域么？
+        // 看起来是，申请的区域直接返回回去，链表里面，仅仅保存了空闲的。
         list_del(&(page->page_link));
         nr_free -= n;
         //cprintf("nr_free is: %d\n", nr_free);

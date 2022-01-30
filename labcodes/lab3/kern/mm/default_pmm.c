@@ -104,7 +104,8 @@ default_init(void) {
     nr_free = 0;
 }
 
-static void
+stati
+c void
 default_init_memmap(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
@@ -116,11 +117,13 @@ default_init_memmap(struct Page *base, size_t n) {
     base->property = n;
     SetPageProperty(base);
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(&free_list, &(base->page_link));
 }
 
 static struct Page *
 default_alloc_pages(size_t n) {
+    // allocate  page 的行为，就是说，申请内存的时候，创建一个新的链表 node ，然后这个 node 大小是 n。
+    // 然后将新申请的 node，作为一个 page 放进去(理解错误，应该是返回，并不会添加进去)，再把原来链表上的一整个 page 缩小。
     assert(n > 0);
     if (n > nr_free) {
         return NULL;
@@ -135,12 +138,14 @@ default_alloc_pages(size_t n) {
         }
     }
     if (page != NULL) {
-        list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
+            // 这个地方可以用。
+            SetPageProperty(p);
+            list_add_before(&(page->page_link), &(p->page_link));
+        }
+        list_del(&(page->page_link));
         nr_free -= n;
         ClearPageProperty(page);
     }
@@ -149,6 +154,13 @@ default_alloc_pages(size_t n) {
 
 static void
 default_free_pages(struct Page *base, size_t n) {
+    // free 的概念其实也简单，就是将 page 的地址按照地址顺序添加到链表里面去。
+    // 如果这个如果这个地址有相邻的空间的话，就合并起来。
+    // 搞了这么久， 其实有一个问题没有搞清楚，page， 物理地址， 虚拟地址之间的关系是如何转换的？
+    // - 什么是 page？就是一个 structure 管理的物理地址
+    // - 物理地址，就是具体存储在内存上的位置。
+    // - 虚拟地址，含有页目录，页表，以及页内偏移信息的一个地址，根据 cr3 寄存器当中的信息，从页表的树状结构中，获取具体的物理地址。
+    // 按照上面的理解， 那么页表的初始化以及申请就是最底层的操作。而页目录，页表等相应的转换是在上一层。最中，页表，页目录转换的结果，也会是一个页的地址。
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
