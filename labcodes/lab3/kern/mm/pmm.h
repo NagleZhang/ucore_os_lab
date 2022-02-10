@@ -93,6 +93,9 @@ pa2page(uintptr_t pa) {
     return &pages[PPN(pa)];
 }
 
+/*
+ * 返回 page 的 kernel 的虚拟地址.
+ */
 static inline void *
 page2kva(struct Page *page) {
     return KADDR(page2pa(page));

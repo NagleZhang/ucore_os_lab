@@ -104,8 +104,7 @@ default_init(void) {
     nr_free = 0;
 }
 
-stati
-c void
+static void
 default_init_memmap(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
@@ -164,21 +163,32 @@ default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
+        // 做一个基本的检查。第一个， page 没有被 reserved ， page property 为空代表其他地方没有被使用。
         assert(!PageReserved(p) && !PageProperty(p));
         p->flags = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
     SetPageProperty(base);
+
+    // 开始遍历链表。从 free_list 开始
     list_entry_t *le = list_next(&free_list);
+    // 到 free list 结束
     while (le != &free_list) {
         p = le2page(le, page_link);
         le = list_next(le);
+        // 如果我们需要 free 的区域正好在链表 node 的前面。
+        // 这个里面又有一个新的没有理解透彻的地方，那就是， page 转换成 le， 然后 property 加上 page 和 page link 为什么可以进行大小比较？
+        // 存放这个东西的实体是什么？
+        // Answer: page link 也是链表当中的一项，list_entry_t。而 le 则是链表当中真实存储数据的。
+        // 整个链表，链接的方式，都是 list_entry_t, 这个链表类似于一个管理者，管理 page 的 array；
+        // 在申请链表的时候，property 是 array 的偏移值, 或者说 index。
         if (base + base->property == p) {
             base->property += p->property;
             ClearPageProperty(p);
             list_del(&(p->page_link));
         }
+        // 或者，我们的区域，正好在链表 node 的后面
         else if (p + p->property == base) {
             p->property += base->property;
             ClearPageProperty(base);
@@ -186,8 +196,27 @@ default_free_pages(struct Page *base, size_t n) {
             list_del(&(p->page_link));
         }
     }
+    // 经过以上遍历，确定释放的区域，不在任何一个 node 的前面或者后面。
+    // 或者，得到合并后的一块区域 base。
+    // 接下来，就是把 node 放到合适的顺序位置。
+    // 因为链表默认是从小到达进行排列，所以我们可以从前向后追溯，如果地址比当前的大，就继续向前追溯
+    // 否则，插入到当前的前面。
+    le = list_next(&free_list);
+    while(le != &free_list) {
+        // 这个里面又有一个新的没有理解透彻的地方，那就是， page 转换成 le， 然后 property 加上 page 和 page link 为什么可以进行大小比较？
+        // 存放这个东西的实体是什么？
+        // Answer: page link 也是链表当中的一项，list_entry_t。而 le 则是链表当中真实存储数据的。
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            assert(base + base->property != p);
+            // 不是大于的情况下
+            break;
+        }
+        le = list_next(le);
+    }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    // list_add(&free_list, &(base->page_link));
+    list_add_before(le, &(base->page_link));
 }
 
 static size_t

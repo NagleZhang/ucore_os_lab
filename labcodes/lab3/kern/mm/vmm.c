@@ -8,9 +8,9 @@
 #include <x86.h>
 #include <swap.h>
 
-/* 
+/* vmm: virtual memory management ?
   vmm design include two parts: mm_struct (mm) & vma_struct (vma)
-  mm is the memory manager for the set of continuous virtual memory  
+  mm is the memory manager for the set of continuous virtual memory
   area which have the same PDT. vma is a continuous virtual memory area.
   There a linear link list for vma & a redblack link list for vma in mm.
 ---------------
@@ -23,6 +23,7 @@
   vma related functions:
    global functions
      struct vma_struct * vma_create (uintptr_t vm_start, uintptr_t vm_end,...)
+     // insert vma struct to mm.
      void insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma)
      struct vma_struct * find_vma(struct mm_struct *mm, uintptr_t addr)
    local functions
@@ -49,6 +50,7 @@ mm_create(void) {
         mm->pgdir = NULL;
         mm->map_count = 0;
 
+        // 判断是否执行过 swap_init 这个 function
         if (swap_init_ok) swap_init_mm(mm);
         else mm->sm_priv = NULL;
     }
@@ -113,14 +115,14 @@ insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
     list_entry_t *list = &(mm->mmap_list);
     list_entry_t *le_prev = list, *le_next;
 
-        list_entry_t *le = list;
-        while ((le = list_next(le)) != list) {
-            struct vma_struct *mmap_prev = le2vma(le, list_link);
-            if (mmap_prev->vm_start > vma->vm_start) {
-                break;
-            }
-            le_prev = le;
+    list_entry_t *le = list;
+    while ((le = list_next(le)) != list) {
+        struct vma_struct *mmap_prev = le2vma(le, list_link);
+        if (mmap_prev->vm_start > vma->vm_start) {
+            break;
         }
+        le_prev = le;
+    }
 
     le_next = list_next(le_prev);
 
@@ -145,7 +147,7 @@ mm_destroy(struct mm_struct *mm) {
     list_entry_t *list = &(mm->mmap_list), *le;
     while ((le = list_next(list)) != list) {
         list_del(le);
-        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma        
+        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma
     }
     kfree(mm, sizeof(struct mm_struct)); //kfree mm
     mm=NULL;
@@ -162,7 +164,7 @@ vmm_init(void) {
 static void
 check_vmm(void) {
     size_t nr_free_pages_store = nr_free_pages();
-    
+
     check_vma_struct();
     check_pgfault();
 
@@ -175,6 +177,7 @@ static void
 check_vma_struct(void) {
     size_t nr_free_pages_store = nr_free_pages();
 
+    // mm 是一个用双向链表串起来的数据结构.
     struct mm_struct *mm = mm_create();
     assert(mm != NULL);
 
@@ -182,8 +185,10 @@ check_vma_struct(void) {
 
     int i;
     for (i = step1; i >= 1; i --) {
+        // 申请一块区域.
         struct vma_struct *vma = vma_create(i * 5, i * 5 + 2, 0);
         assert(vma != NULL);
+        // 将申请到的区域放到 mm 的链表当中去.
         insert_vma_struct(mm, vma);
     }
 
@@ -396,7 +401,47 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
-   ret = 0;
+    // 思考一个问题, 一旦发生 page fault ,我们需要做什么? 什么是缺页异常? 也就是说, 我要找的页面不在内存里面, 我需要去磁盘里面找.
+    // struct mm_struct *mm, uint32_t error_code, uintptr_t addr
+    // 上面的参数当中, 一个是 mm_struct 这个是一个虚拟地址, 所以,就是在访问 mm 当中的 addr 的时候, 发生了缺页异常. 我们需要说, 找到目前这个地址真实存在的地址.
+    // 然后,我们根据这个地址, 把它 swap in 进来.
+    // 但是 swap in 进来的话, 肯定是需要把一个东西 swap out 出去. 这个时候就会涉及到一个置换的算法问题.
+    // 而在没有执行 swap in & out 之前,我们需要找到这个物理页面, 那么, 这个物理页面存储在什么位置? 我们需要去页表里面找到
+    // 按照这个推断的话,  mm 里面肯定存储这这个页面是否需要触发缺页行为的 bit 位. 在哪里?
+    // https://chyyuu.gitbooks.io/ucore_os_docs/content/lab3/lab3_4_page_fault_handler.html
+    // 这个地方完美的解决了我的问题. present bit 位, 就是用来描述说, 页面是否在内存当中, 如果不在, 咱们开始 swap.
+    // 所以, 缺页, 是在物理地址上找不到了, 因为物理地址, 就是内存条.
+
+    // 所以这个地方, 相当于第一次来,
+    if((ptep = get_pte(mm->pgdir, addr, 1)) == NULL){
+        cprintf("get page table entry failed under do_pgfault.");
+        goto failed;
+    }
+
+    // 不太理解这个地方为什么存在.
+    if (*ptep == 0) { // if the phy addr isn't exist, then alloc a page then map the phy addr with logical addr
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+            cprintf("pgdir_alloc_page in do_pgfault failed\n");
+            goto failed;
+        }
+    } else { // if this pte is a swap entry, then load data from disk to a page with phy addr
+           // and call page_insert to map the phy addr with logical addr
+        if(swap_init_ok) {
+            struct Page *page=NULL;
+            if ((ret = swap_in(mm, addr, &page)) != 0) {
+                cprintf("swap_in in do_pgfault failed\n");
+                goto failed;
+            }
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
+            page->pra_vaddr = addr;
+        }
+        else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+        }
+    }
+    ret = 0;
 failed:
     return ret;
 }

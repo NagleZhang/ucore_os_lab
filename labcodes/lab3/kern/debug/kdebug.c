@@ -305,24 +305,42 @@ print_stackframe(void) {
       *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
       *                   the calling funciton's ebp = ss:[ebp]
       */
+    //*
     uint32_t ebp = read_ebp();
     uint32_t eip = read_eip();
-    cprintf("let's debug stackframe. \n");
+    //cprintf("let's debug stackframe. \n");
     for( int i = 0; ebp != 0 && i < STACKFRAME_DEPTH; i ++ ) {
         cprintf("current eip: 0x%x, ebp: 0x%x \n",eip, ebp);
         print_debuginfo(eip-1);
-        uint32_t * current_ebp = ((uint32_t *)ebp)+2;
+        uint32_t * current_ebp = (uint32_t *)ebp+2;
         cprintf("Arguments: [");
         for(int j = 0; j < 4 ; j++) {
-            cprintf(" (HEX: 0x%x STR: %s) ", current_ebp[j],current_ebp[j]);
+            //cprintf(" (HEX: 0x%x STR: %s) ", current_ebp[j],current_ebp[j]);
+            cprintf(" (HEX: 0x%08x ) ", current_ebp[j]);
         }
         cprintf("]\n\n");
         // 因为 ebp 指向前面的一个 ebp， 所以，我们一直向前调用就可以了。
-        ebp = ((uint32_t *) ebp)[0];
         eip = ((uint32_t *) ebp)[1];
+        ebp = ((uint32_t *) ebp)[0];
         // cprintf("prev eip: 0x%x , prev ebp: 0x%x \n",eip, ebp);
-
     }
-    return;
+    //return;
+    //*/
+    /*
+    uint32_t ebp = read_ebp(), eip = read_eip();
+
+    int i, j;
+    for (i = 0; ebp != 0 && i < STACKFRAME_DEPTH; i ++) {
+        cprintf("ebp:0x%08x eip:0x%08x args:", ebp, eip);
+        uint32_t *args = (uint32_t *)ebp + 2;
+        for (j = 0; j < 4; j ++) {
+            cprintf("0x%08x ", args[j]);
+        }
+        cprintf("\n");
+        print_debuginfo(eip - 1);
+        eip = ((uint32_t *)ebp)[1];
+        ebp = ((uint32_t *)ebp)[0];
+    }
+    */
 }
 

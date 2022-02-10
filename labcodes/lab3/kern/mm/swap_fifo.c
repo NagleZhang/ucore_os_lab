@@ -32,7 +32,7 @@ list_entry_t pra_list_head;
  */
 static int
 _fifo_init_mm(struct mm_struct *mm)
-{     
+{
      list_init(&pra_list_head);
      mm->sm_priv = &pra_list_head;
      //cprintf(" mm->sm_priv %x in fifo_init_mm\n",mm->sm_priv);

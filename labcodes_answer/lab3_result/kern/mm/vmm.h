@@ -24,6 +24,7 @@ struct vma_struct {
 #define VM_READ                 0x00000001
 #define VM_WRITE                0x00000002
 #define VM_EXEC                 0x00000004
+// 4: 100 / 2: 010 / 1: 001
 
 // the control struct for a set of vma using the same PDT
 struct mm_struct {

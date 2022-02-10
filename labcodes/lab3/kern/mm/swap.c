@@ -36,11 +36,11 @@ swap_init(void)
      {
           panic("bad max_swap_offset %08x.\n", max_swap_offset);
      }
-     
+
 
      sm = &swap_manager_fifo;
      int r = sm->init();
-     
+
      if (r == 0)
      {
           swap_init_ok = 1;

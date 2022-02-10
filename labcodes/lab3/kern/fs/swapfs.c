@@ -9,6 +9,7 @@
 void
 swapfs_init(void) {
     static_assert((PGSIZE % SECTSIZE) == 0);
+    // ide 代表的是硬盘.
     if (!ide_device_valid(SWAP_DEV_NO)) {
         panic("swap fs isn't available.\n");
     }
