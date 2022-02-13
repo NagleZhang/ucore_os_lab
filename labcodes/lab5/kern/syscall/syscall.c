@@ -80,7 +80,11 @@ static int (*syscalls[])(uint32_t arg[]) = {
 
 void
 syscall(void) {
-    // 有一点没有相同.
+    // 有一点没有理解. 怎么就syscall 映射到 exec, fork, wait 等行为了?
+    // syscall 本身,参数是 void, 也就是说没有参数, 那么, 怎么断定是 exec ,还是fork等等的?
+    // unistd.h 当中, 定义了各个 syscall 的 number
+    // 然后,在 tf_regs 里面的 reg_eax 当中,存储了 syscall 的数组便宜.进而可以判断是 exec 还是 fork.
+
     struct trapframe *tf = current->tf;
     uint32_t arg[5];
     int num = tf->tf_regs.reg_eax;
