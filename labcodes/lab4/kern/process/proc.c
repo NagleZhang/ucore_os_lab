@@ -27,7 +27,7 @@ process state       :     meaning               -- reason
 
 -----------------------------
 process state changing:
-                                            
+
   alloc_proc                                 RUNNING
       +                                   +--<----<--+
       +                                   + proc_run +
@@ -86,6 +86,12 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
+        // 申请一个 process 需要做什么?
+        // 需要申请对应的内存空间.
+        // 然后 Process 需要被管理, 所以可以用 list 把这些穿起来.
+        // 初始化 proc_struct , 然后直接返回即可.
+        // 那么, 这个 Process 理论上来说, 是属于一个进程的 metadata, 描述性质的信息.
+        // 具体 run 的 application 如何执行呢? 如何进程管理呢?
     //LAB4:EXERCISE1 YOUR CODE
     /*
      * below fields in proc_struct need to be initialized
@@ -102,6 +108,29 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+        //        proc -> state = PROC_RUNNABLE;
+        //        proc -> pid = 0;
+        //        proc -> runs = 0;
+        //        proc -> kstack = ?;
+        //        proc -> need_resched = false;
+        //        proc -> parent = NULL;
+        //        proc -> mm = ?;// vmm 里面的 global 值.
+        //        proc -> context = ?;
+        //        proc -> tf = ?;
+        //        proc -> cr3 = ?;
+        //        proc -> flags = ?;
+        proc->state = PROC_UNINIT;
+        proc->pid = -1;
+        proc->runs = 0;
+        proc->kstack = 0;
+        proc->need_resched = 0;
+        proc->parent = NULL;
+        proc->mm = NULL;
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;
+        proc->cr3 = boot_cr3;
+        proc->flags = 0;
+        memset(proc->name, 0, PROC_NAME_LEN);
     }
     return proc;
 }
@@ -157,7 +186,7 @@ get_pid(void) {
 }
 
 // proc_run - make process "proc" running on cpu
-// NOTE: before call switch_to, should load  base addr of "proc"'s new PDT
+// NOTE: before call switch_to, should load  base addr of "proc"'s new PDT (CR3 寄存器存放 pdt)
 void
 proc_run(struct proc_struct *proc) {
     if (proc != current) {
@@ -166,8 +195,12 @@ proc_run(struct proc_struct *proc) {
         local_intr_save(intr_flag);
         {
             current = proc;
+            // 修改栈
             load_esp0(next->kstack + KSTACKSIZE);
             lcr3(next->cr3);
+            // switch.s 当中, 修改 cpu 的寄存器值.
+            // 所以这个地方, 回答了 line 94 的问题: 管理运行内容, 使用的是 context switching.
+            // 所以 Process 只需要记住具体 load 进程的位置就可以了.
             switch_to(&(prev->context), &(next->context));
         }
         local_intr_restore(intr_flag);
@@ -296,6 +329,36 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+    if ((proc = alloc_proc()) == NULL) {
+        cprintf("allocalte proc failed.");
+        goto bad_fork_cleanup_kstack;
+    }
+    proc -> parent = current;
+    if (setup_kstack(proc) != 0) {
+        cprintf("setup kernel stack failed.");
+        goto bad_fork_cleanup_kstack;
+    }
+    // lab4 当中, copy mm 什么也没有做. 但是这个地方值得看一下, 因为要确定 mm 到底有多少个. 这个是我一直困惑的问题. 😖
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_kstack;
+    }
+
+    // esp, 也就是 stack
+    copy_thread(proc, stack, tf);
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        list_add(&proc_list, &(proc->list_link));
+        nr_process ++;
+    }
+    local_intr_restore(intr_flag);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
+
 fork_out:
     return ret;
 

@@ -40,9 +40,13 @@ kern_init(void) {
     vmm_init();                 // init virtual memory management
     proc_init();                // init process table
     
+    cprintf("start ide init.\n");
     ide_init();                 // init ide devices
+    cprintf("start swap init.\n");
     swap_init();                // init swap
 
+
+    cprintf("start clock init.\n");
     clock_init();               // init clock interrupt
     intr_enable();              // enable irq interrupt
 
@@ -50,7 +54,10 @@ kern_init(void) {
     // user/kernel mode switch test
     //lab1_switch_test();
     
+    cprintf("start cpu_idle.\n");
     cpu_idle();                 // run idle process
+
+    cprintf("kernel init successfully.\n");
 }
 
 void __attribute__((noinline))

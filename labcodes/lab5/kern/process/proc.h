@@ -56,7 +56,10 @@ struct proc_struct {
     list_entry_t hash_link;                     // Process hash list
     int exit_code;                              // exit code (be sent to parent proc)
     uint32_t wait_state;                        // waiting state
-    struct proc_struct *cptr, *yptr, *optr;     // relations between processes
+    struct proc_struct *cptr, *yptr, *optr;     // relations between processes,
+                                                // cptr(children)
+                                                // yptr(yonger sibling)
+                                                // optr(older sibling)
 };
 
 #define PF_EXITING                  0x00000001      // getting shutdown

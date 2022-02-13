@@ -31,6 +31,7 @@ schedule(void) {
         current->need_resched = 0;
         last = (current == idleproc) ? &proc_list : &(current->list_link);
         le = last;
+        // 遍历直到找到 runnable 的进程, 就继续执行.
         do {
             if ((le = list_next(le)) != &proc_list) {
                 next = le2proc(le, list_link);
@@ -39,11 +40,13 @@ schedule(void) {
                 }
             }
         } while (le != last);
+        // 避免发生没有进程是 runable 的情况.
         if (next == NULL || next->state != PROC_RUNNABLE) {
             next = idleproc;
         }
         next->runs ++;
         if (next != current) {
+            // 确保没有重复 run 一个 proc.
             proc_run(next);
         }
     }

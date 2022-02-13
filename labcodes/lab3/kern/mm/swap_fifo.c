@@ -40,17 +40,21 @@ _fifo_init_mm(struct mm_struct *mm)
 }
 /*
  * (3)_fifo_map_swappable: According FIFO PRA, we should link the most recent arrival page at the back of pra_list_head qeueue
+ * 如何判断一个 page 是可以执行 swap 的 ? 需要 swap 的必然是虚拟页面, 也就是 vma , virtual Memory Area.
+ * 判定这个页面是否需要进行判断, 就是 present 的这个位.
+ * 似乎这个地方不是用来判断是否 swappable 的.
  */
 static int
 _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
 {
     list_entry_t *head=(list_entry_t*) mm->sm_priv;
     list_entry_t *entry=&(page->pra_page_link);
- 
+
     assert(entry != NULL && head != NULL);
     //record the page access situlation
     /*LAB3 EXERCISE 2: YOUR CODE*/ 
     //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
+    list_add(head, entry);
     return 0;
 }
 /*
@@ -67,6 +71,13 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
      /*LAB3 EXERCISE 2: YOUR CODE*/ 
      //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
      //(2)  assign the value of *ptr_page to the addr of this page
+     list_entry_t *prev = head -> prev;
+     //list_entry_t *le = head->prev;
+     assert(head!=prev);
+     struct Page *p = le2page(prev, pra_page_link);
+     list_del(prev);
+     assert(p !=NULL);
+     *ptr_page = p;
      return 0;
 }
 

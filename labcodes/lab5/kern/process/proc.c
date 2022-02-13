@@ -109,6 +109,20 @@ alloc_proc(void) {
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
+        proc->state = PROC_UNINIT;
+        proc->pid = -1;
+        proc->runs = 0;
+        proc->kstack = 0;
+        proc->need_resched = 0;
+        proc->parent = NULL;
+        proc->mm = NULL;
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;
+        proc->cr3 = boot_cr3;
+        proc->flags = 0;
+        memset(proc->name, 0, PROC_NAME_LEN);
+        proc->wait_state = 0;
+        proc->cptr = proc->optr = proc->yptr = NULL;
     }
     return proc;
 }
@@ -279,6 +293,10 @@ put_kstack(struct proc_struct *proc) {
 // setup_pgdir - alloc one page as PDT
 static int
 setup_pgdir(struct mm_struct *mm) {
+    // pgdir 似乎想要就要, 让我有些搞不清楚了, 不清楚的点在于: 到底有多少个 pgdir?
+    // 我的理解里面, 应该是只有一个 pgdir, 但是如果只有一个, 不应该是说, 直接获取就可以了么? 为什么还需要不停的去 setup ?
+    // 如果说, 是多个, 那么这些 pgdir 到底应该如何映射?
+    // 一个 mm, 然后映射的地址是一个 pgdir, 然后另外一个 mm, 另外一个 pgdir?
     struct Page *page;
     if ((page = alloc_page()) == NULL) {
         return -E_NO_MEM;
@@ -403,7 +421,40 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
-	
+
+    if ((proc = alloc_proc()) == NULL) {
+        cprintf("allocalte proc failed.");
+        goto fork_out;
+    }
+    proc -> parent = current;
+    assert(current->wait_state == 0);
+    if (setup_kstack(proc) != 0) {
+        cprintf("setup kernel stack failed.");
+        goto bad_fork_cleanup_kstack;
+    }
+    // lab4 当中, copy mm 什么也没有做. 但是这个地方值得看一下, 因为要确定 mm 到底有多少个. 这个是我一直困惑的问题. 😖
+    // lab5 当中, copy mm 根据 clone_flags , 会决定调用是否执行 create_mm 这个 function.
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_kstack;
+    }
+
+    // esp, 也就是 stack
+    copy_thread(proc, stack, tf);
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        set_links(proc);
+        //list_add(&proc_list, &(proc->list_link));
+        //nr_process ++;
+    }
+    local_intr_restore(intr_flag);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
+
 fork_out:
     return ret;
 
@@ -491,6 +542,7 @@ load_icode(unsigned char *binary, size_t size) {
     if (setup_pgdir(mm) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
+    // 所以一个程序里面 text/data 这些 section 就是在这个地方用的.
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
     //(3.1) get the file header of the bianry program (ELF format)
@@ -504,12 +556,16 @@ load_icode(unsigned char *binary, size_t size) {
     }
 
     uint32_t vm_flags, perm;
+    // proghdr: program section header / e_phnum: 有多少个 section under elf binary.
     struct proghdr *ph_end = ph + elf->e_phnum;
+    // 遍历 program header 了.
     for (; ph < ph_end; ph ++) {
     //(3.4) find every program section headers
+        // 不是 code 或者 data ,跳过下面的 code.
         if (ph->p_type != ELF_PT_LOAD) {
             continue ;
         }
+        // filesize 太大的话, load 不了, 直接抛出错误.
         if (ph->p_filesz > ph->p_memsz) {
             ret = -E_INVAL_ELF;
             goto bad_cleanup_mmap;
@@ -517,15 +573,18 @@ load_icode(unsigned char *binary, size_t size) {
         if (ph->p_filesz == 0) {
             continue ;
         }
-    //(3.5) call mm_map fun to setup the new vma ( ph->p_va, ph->p_memsz)
+    //(3.5) call mm_map function to setup the new vma ( ph->p_va, ph->p_memsz)
         vm_flags = 0, perm = PTE_U;
+        // permission setup.
         if (ph->p_flags & ELF_PF_X) vm_flags |= VM_EXEC;
         if (ph->p_flags & ELF_PF_W) vm_flags |= VM_WRITE;
         if (ph->p_flags & ELF_PF_R) vm_flags |= VM_READ;
         if (vm_flags & VM_WRITE) perm |= PTE_W;
+        // 创建一个新的 vma. 基于 program header 当中的 va and size.
         if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
             goto bad_cleanup_mmap;
         }
+        // 我猜测, 这个地方应该是放需要执行的代码的.
         unsigned char *from = binary + ph->p_offset;
         size_t off, size;
         uintptr_t start = ph->p_va, end, la = ROUNDDOWN(start, PGSIZE);
@@ -535,6 +594,8 @@ load_icode(unsigned char *binary, size_t size) {
      //(3.6) alloc memory, and  copy the contents of every program section (from, from+end) to process's memory (la, la+end)
         end = ph->p_va + ph->p_filesz;
      //(3.6.1) copy TEXT/DATA section of bianry program
+        // 开始遍历从 start -> end 的内容了. 把上面 from 里面指向的内容, 拷贝到被执行的地方去.
+        // 核心代码是 memcpy;
         while (start < end) {
             if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
                 goto bad_cleanup_mmap;
@@ -549,6 +610,7 @@ load_icode(unsigned char *binary, size_t size) {
 
       //(3.6.2) build BSS section of binary program
         end = ph->p_va + ph->p_memsz;
+        // 复杂的安全判断.
         if (start < la) {
             /* ph->p_memsz == ph->p_filesz */
             if (start == end) {
@@ -562,6 +624,9 @@ load_icode(unsigned char *binary, size_t size) {
             start += size;
             assert((end < la && start == end) || (end >= la && start == la));
         }
+        // 遍历. pgdir_alloc_page 就是说, 根据相应的 pgdir, 去 allocate page.
+        // 也就是说,可以有多个 mm, 也可有多个 pgdir, 也可以有多个虚拟地址空间.
+        // 这个地方 allocate 到的 page , 都重置为 0 了.
         while (start < end) {
             if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
                 goto bad_cleanup_mmap;
@@ -576,6 +641,7 @@ load_icode(unsigned char *binary, size_t size) {
     }
     //(4) build user stack memory
     vm_flags = VM_READ | VM_WRITE | VM_STACK;
+    // 在 mm struct 上面, 再申请一块 vmm, 然后用来作为 stack.
     if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
         goto bad_cleanup_mmap;
     }
@@ -588,9 +654,15 @@ load_icode(unsigned char *binary, size_t size) {
     mm_count_inc(mm);
     current->mm = mm;
     current->cr3 = PADDR(mm->pgdir);
+    // load cr3, 也就是说,这个地方, pgdir 开始工作了.
+    // 又开始了一个不清晰的地方, lcr3 开始 load , 也就是说页表就指向了这个地方.
+    // 那么, 如何切换其他的呢?
     lcr3(PADDR(mm->pgdir));
 
     //(6) setup trapframe for user environment
+    // 看到这个地方的时候,我有有点回忆不起来了. 为什么要在这个地方设置 trapframe?
+    // 答: 因为 trap 的时候,涉及到用户态,内核态的切换, 所以需要记录 cs/ss 等基本寄存器的信息. 所以需要设置好 trapframe.
+    //     在 trap 结束 , ret 的时候, 就可以进行恢复.
     struct trapframe *tf = current->tf;
     memset(tf, 0, sizeof(struct trapframe));
     /* LAB5:EXERCISE1 YOUR CODE
@@ -602,6 +674,11 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf-> tf_cs  = USER_CS;
+    tf->tf_ds=tf->tf_es=tf->tf_ss = USER_DS;
+    tf-> tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
     ret = 0;
 out:
     return ret;
@@ -619,7 +696,12 @@ bad_mm:
 //           - call load_icode to setup new memory space accroding binary prog.
 int
 do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
+    // 这个地方最主要的作用就是, 设置执行 systemcall 当中的 exec 功能.
+    // 这么理解下来的话, 实际上这个地方就是获取一个 binary ,然后执行这个 binary 里面的东西.
+    // 如果需要执行一个 binary , 那么首先需要申请一块虚拟内存, 所以 exec 功能, systemcall 功能,并没有用到 fork 这个功能.
+    // 而是直接执行当前的的 process.
     struct mm_struct *mm = current->mm;
+    // 一些初始化的工作.
     if (!user_mem_check(mm, (uintptr_t)name, len, 0)) {
         return -E_INVAL;
     }
@@ -631,6 +713,7 @@ do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
     memset(local_name, 0, sizeof(local_name));
     memcpy(local_name, name, len);
 
+    // 清理 mm
     if (mm != NULL) {
         lcr3(boot_cr3);
         if (mm_count_dec(mm) == 0) {
@@ -743,6 +826,7 @@ do_kill(int pid) {
 static int
 kernel_execve(const char *name, unsigned char *binary, size_t size) {
     int ret, len = strlen(name);
+    // 所以这个地方产生了系统调用. 进而调用 ,SYS_exec , 从而需要 copy range.
     asm volatile (
         "int %1;"
         : "=a" (ret)
@@ -772,6 +856,7 @@ kernel_execve(const char *name, unsigned char *binary, size_t size) {
 #define KERNEL_EXECVE2(x, xstart, xsize)        __KERNEL_EXECVE2(x, xstart, xsize)
 
 // user_main - kernel thread used to exec a user program
+// 所以在这个地方调用了 user 的 function.
 static int
 user_main(void *arg) {
 #ifdef TEST
@@ -841,6 +926,7 @@ proc_init(void) {
 
     assert(idleproc != NULL && idleproc->pid == 0);
     assert(initproc != NULL && initproc->pid == 1);
+    cprintf("done proc init.\n");
 }
 
 // cpu_idle - at the end of kern_init, the first kernel thread idleproc will do below works

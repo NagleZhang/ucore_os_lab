@@ -6,3 +6,5 @@ labcodes_answer/*/bin/*
 labcodes_answer/*/obj/*
 os/.idea/*
 Cargo.lock
+*.log
+*.out

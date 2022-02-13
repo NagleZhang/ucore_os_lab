@@ -222,6 +222,7 @@ int
 kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
     struct trapframe tf;
     memset(&tf, 0, sizeof(struct trapframe));
+    // 设置好中断门.
     tf.tf_cs = KERNEL_CS;
     tf.tf_ds = tf.tf_es = tf.tf_ss = KERNEL_DS;
     tf.tf_regs.reg_ebx = (uint32_t)fn;
@@ -387,6 +388,7 @@ proc_init(void) {
 
     current = idleproc;
 
+    // 尝试创建一个 kernel 的线程, 其中使用到 do_fork, fork 的具体执行函数是 init_main
     int pid = kernel_thread(init_main, "Hello world!!", 0);
     if (pid <= 0) {
         panic("create init_main failed.\n");

@@ -51,12 +51,16 @@ _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int
     //record the page access situlation
     /*LAB3 EXERCISE 2: YOUR CODE*/ 
     //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
+    list_add(head, entry);
     return 0;
 }
 /*
  *  (4)_fifo_swap_out_victim: According FIFO PRA, we should unlink the  earliest arrival page in front of pra_list_head qeueue,
  *                            then assign the value of *ptr_page to the addr of this page.
  */
+// 1. 降低期待值
+// 2. 当成一件重要的事情来看待, 预计投入多长时间.
+// 3. 使自己的心理状态处于学习区(舒适区/学习区/焦虑区), 降低任务难度.
 static int
 _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
 {
@@ -67,6 +71,13 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
      /*LAB3 EXERCISE 2: YOUR CODE*/ 
      //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
      //(2)  assign the value of *ptr_page to the addr of this page
+     list_entry_t *prev = head -> prev;
+     //list_entry_t *le = head->prev;
+     assert(head!=prev);
+     struct Page *p = le2page(prev, pra_page_link);
+     list_del(prev);
+     assert(p !=NULL);
+     *ptr_page = p;
      return 0;
 }
 
