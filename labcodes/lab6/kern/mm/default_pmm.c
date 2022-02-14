@@ -116,7 +116,7 @@ default_init_memmap(struct Page *base, size_t n) {
     base->property = n;
     SetPageProperty(base);
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(&free_list, &(base->page_link));
 }
 
 static struct Page *
@@ -134,13 +134,28 @@ default_alloc_pages(size_t n) {
             break;
         }
     }
+    /*
     if (page != NULL) {
-        list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
+            SetPageProperty(p);
+            list_add_before(&(page->page_link), &(p->page_link));
+        }
+        list_del(&(page->page_link));
+        nr_free -= n;
+        ClearPageProperty(page);
     }
+    return page;
+    */
+    if (page != NULL) {
+        if (page->property > n) {
+            struct Page *p = page + n;
+            p->property = page->property - n;
+            SetPageProperty(p);
+            list_add_before(&(page->page_link), &(p->page_link));
+        }
+        list_del(&(page->page_link));
         nr_free -= n;
         ClearPageProperty(page);
     }
@@ -174,8 +189,24 @@ default_free_pages(struct Page *base, size_t n) {
             list_del(&(p->page_link));
         }
     }
+    //nr_free += n;
+    //list_add(&free_list, &(base->page_link));
+    while(le != &free_list) {
+        // 这个里面又有一个新的没有理解透彻的地方，那就是， page 转换成 le， 然后 property 加上 page 和 page link 为什么可以进行大小比较？
+        // 存放这个东西的实体是什么？
+        // Answer: page link 也是链表当中的一项，list_entry_t。而 le 则是链表当中真实存储数据的。
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            assert(base + base->property != p);
+            // 不是大于的情况下
+            break;
+        }
+        le = list_next(le);
+    }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    // list_add(&free_list, &(base->page_link));
+    list_add_before(le, &(base->page_link));
+
 }
 
 static size_t

@@ -80,18 +80,18 @@ find_vma(struct mm_struct *mm, uintptr_t addr) {
     if (mm != NULL) {
         vma = mm->mmap_cache;
         if (!(vma != NULL && vma->vm_start <= addr && vma->vm_end > addr)) {
-                bool found = 0;
-                list_entry_t *list = &(mm->mmap_list), *le = list;
-                while ((le = list_next(le)) != list) {
-                    vma = le2vma(le, list_link);
-                    if (vma->vm_start<=addr && addr < vma->vm_end) {
-                        found = 1;
-                        break;
-                    }
+            bool found = 0;
+            list_entry_t *list = &(mm->mmap_list), *le = list;
+            while ((le = list_next(le)) != list) {
+                vma = le2vma(le, list_link);
+                if (vma->vm_start<=addr && addr < vma->vm_end) {
+                    found = 1;
+                    break;
                 }
-                if (!found) {
-                    vma = NULL;
-                }
+            }
+            if (!found) {
+                vma = NULL;
+            }
         }
         if (vma != NULL) {
             mm->mmap_cache = vma;

@@ -57,6 +57,21 @@ idt_init(void) {
      /* LAB5 YOUR CODE */ 
      //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
      //so you should setup the syscall interrupt gate in here
+    extern uintptr_t __vectors[];
+    for (int i = 0; i < 256; i++ ) {
+        SETGATE(idt[i],       // gate , trap 会通过此门， 然后根据门内信息决定中断处理例程, 也就是 vector 里面对应的处理例程。
+                0,            // 这个应该是用来处理 trap， 而非 exception 的。
+                GD_KTEXT,     // 既然是 trap， 那么 idt 的代码应该是属于内核， 所以 code 的位置应该也是属于内核段。
+                __vectors[i], // 这个内容会放到寄存器的后面 16 位， 从而根据这个 16 位， 加上 gdt 里面的 idt 的地址，确定执行哪一个例程
+                DPL_KERNEL    // 与代码段的理解同理， 这个也应该是属于 kernel 态权限。
+                );
+    }
+
+    SETGATE(idt[T_SYSCALL], 0,GD_KTEXT , __vectors[T_SYSCALL], DPL_USER);
+
+    // 告诉寄存器一声， 我好了；
+    lidt(&idt_pd);
+
 }
 
 static const char *
@@ -211,8 +226,8 @@ trap_dispatch(struct trapframe *tf) {
         break;
     case IRQ_OFFSET + IRQ_TIMER:
 #if 0
-    LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
-    then you can add code here. 
+        //LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
+        //then you can add code here. 
 #endif
         /* LAB1 YOUR CODE : STEP 3 */
         /* handle the timer interrupt */
@@ -227,8 +242,15 @@ trap_dispatch(struct trapframe *tf) {
         /* LAB6 YOUR CODE */
         /* you should upate you lab5 code
          * IMPORTANT FUNCTIONS:
-	     * sched_class_proc_tick
+         * sched_class_proc_tick
          */
+        ticks++;
+        if (ticks % TICK_NUM == 0 ) {
+            //sched_class_proc_tick(current);
+            current->need_resched = 1;
+            print_ticks();
+        }
+
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();

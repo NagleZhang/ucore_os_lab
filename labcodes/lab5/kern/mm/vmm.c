@@ -354,7 +354,9 @@ check_pgfault(void) {
     assert(sum == 0);
 
     page_remove(pgdir, ROUNDDOWN(addr, PGSIZE));
+    cprintf("111111 start free page\n");
     free_page(pde2page(pgdir[0]));
+    cprintf("111111 end free page\n");
     pgdir[0] = 0;
 
     mm->pgdir = NULL;
@@ -391,6 +393,7 @@ volatile unsigned int pgfault_num=0;
  */
 int
 do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
+    cprintf("do pgfault\n");
     int ret = -E_INVAL;
     //try to find a vma which include addr
     struct vma_struct *vma = find_vma(mm, addr);
@@ -526,7 +529,6 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 failed:
     return ret;
 }
-
 bool
 user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
     if (mm != NULL) {

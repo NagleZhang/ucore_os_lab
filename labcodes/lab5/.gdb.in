@@ -1,4 +1,0 @@
-target remote localhost:1234
-break *0xc01003b4
-break *0x001003b4
-continue
