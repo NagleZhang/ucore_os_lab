@@ -77,6 +77,7 @@ wakeup_proc(struct proc_struct *proc) {
 
 void
 schedule(void) {
+    // schedule 就是说, 在 run qeue 里面, 选择一个出来运行.
     bool intr_flag;
     struct proc_struct *next;
     local_intr_save(intr_flag);

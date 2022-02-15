@@ -133,6 +133,15 @@ alloc_proc(void) {
         memset(proc->name, 0, PROC_NAME_LEN);
         proc->wait_state = 0;
         proc->cptr = proc->optr = proc->yptr = NULL;
+
+        // LAB6
+        proc -> rq = NULL;
+        list_init(&(proc->run_link));
+        proc->time_slice = 0;
+        proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
+        proc->lab6_stride = 0;
+        proc->lab6_priority = 0;
+        //proc -> time_slice = MAX_TIME_SLICE;
     }
     return proc;
 }
@@ -657,6 +666,12 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
+
     ret = 0;
 out:
     return ret;
@@ -843,6 +858,7 @@ init_main(void *arg) {
     size_t nr_free_pages_store = nr_free_pages();
     size_t kernel_allocated_store = kallocated();
 
+    cprintf("under init main, create user main.\n");
     int pid = kernel_thread(user_main, NULL, 0);
     if (pid <= 0) {
         panic("create user_main failed.\n");
@@ -886,13 +902,20 @@ proc_init(void) {
 
     current = idleproc;
 
+    cprintf("start create kernel thread init main.\n");
     int pid = kernel_thread(init_main, NULL, 0);
+
     if (pid <= 0) {
         panic("create init_main failed.\n");
     }
 
+    cprintf("start find proc.\n");
     initproc = find_proc(pid);
+    cprintf("start set proc name.\n");
     set_proc_name(initproc, "init");
+
+
+    cprintf("almost.\n");
 
     assert(idleproc != NULL && idleproc->pid == 0);
     assert(initproc != NULL && initproc->pid == 1);
