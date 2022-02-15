@@ -712,6 +712,13 @@ check_boot_pgdir(void) {
     free_page(pde2page(boot_pgdir[0]));
     boot_pgdir[0] = 0;
 
+    // 编译的时候, 一直通不过去, 下面这两行代码有问题.
+    // 这两行代码被删除了, 所以一直报错. 但是目前不太理解为什么会导致报错.
+    // 这两行代码是在快表当中删除缓存项.
+    // need review
+    tlb_invalidate(boot_pgdir, 0x100);
+    tlb_invalidate(boot_pgdir, 0x100+PGSIZE);
+
     cprintf("check_boot_pgdir() succeeded!\n");
 }
 
