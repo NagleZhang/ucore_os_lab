@@ -31,7 +31,7 @@ process state       :     meaning               -- reason
 
 -----------------------------
 process state changing:
-                                            
+
   alloc_proc                                 RUNNING
       +                                   +--<----<--+
       +                                   + proc_run +
@@ -1004,7 +1004,7 @@ init_main(void *arg) {
     if ((ret = vfs_set_bootfs("disk0:")) != 0) {
         panic("set boot fs failed: %e.\n", ret);
     }
-    
+
     size_t nr_free_pages_store = nr_free_pages();
     size_t kernel_allocated_store = kallocated();
 
@@ -1012,7 +1012,7 @@ init_main(void *arg) {
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
- extern void check_sync(void);
+    extern void check_sync(void);
     check_sync();                // check philosopher sync problem
 
     while (do_wait(0, NULL) == 0) {
@@ -1020,7 +1020,7 @@ init_main(void *arg) {
     }
 
     fs_cleanup();
-        
+
     cprintf("all user-mode processes have quit.\n");
     assert(initproc->cptr == NULL && initproc->yptr == NULL && initproc->optr == NULL);
     assert(nr_process == 2);
@@ -1102,12 +1102,16 @@ do_sleep(unsigned int time) {
     }
     bool intr_flag;
     local_intr_save(intr_flag);
+    // 初始化一个计时器.
     timer_t __timer, *timer = timer_init(&__timer, current, time);
     current->state = PROC_SLEEPING;
     current->wait_state = WT_TIMER;
+    // 在 timer list 的这个地方, 为当前进程添加上一个新的计时器, 这个计时器, 用来trace 单个进程是否超时.
+    // 每一次 time ticket , 发生时钟中断, 都会把所有 timer list 进行遍历. 然后执行合适的进程.
     add_timer(timer);
     local_intr_restore(intr_flag);
 
+    // scheduler
     schedule();
 
     del_timer(timer);

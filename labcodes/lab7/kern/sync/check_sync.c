@@ -183,7 +183,14 @@ void phi_take_forks_condvar(int i) {
 //--------into routine in monitor--------------
      // LAB7 EXERCISE1: YOUR CODE
      // I am hungry
+     state_condvar[i]=HUNGRY; 
      // try to get fork
+     phi_test_condvar(i); 
+     if (state_condvar[i] != EATING) {
+         cprintf("phi_take_forks_condvar: %d didn't get fork and will wait\n",i);
+         cond_wait(&mtp->cv[i]);
+     }
+
 //--------leave routine in monitor--------------
       if(mtp->next_count>0)
          up(&(mtp->next));
@@ -197,7 +204,10 @@ void phi_put_forks_condvar(int i) {
 //--------into routine in monitor--------------
      // LAB7 EXERCISE1: YOUR CODE
      // I ate over
+     state_condvar[i]=THINKING;
      // test left and right neighbors
+     phi_test_condvar(LEFT);
+     phi_test_condvar(RIGHT);
 //--------leave routine in monitor--------------
      if(mtp->next_count>0)
         up(&(mtp->next));
@@ -207,7 +217,7 @@ void phi_put_forks_condvar(int i) {
 
 //---------- philosophers using monitor (condition variable) ----------------------
 int philosopher_using_condvar(void * arg) { /* arg is the No. of philosopher 0~N-1*/
-  
+
     int i, iter=0;
     i=(int)arg;
     cprintf("I am No.%d philosopher_condvar\n",i);

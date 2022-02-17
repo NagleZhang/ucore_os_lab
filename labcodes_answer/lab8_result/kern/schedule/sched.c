@@ -141,6 +141,9 @@ del_timer(timer_t *timer) {
 
 void
 run_timer_list(void) {
+    // 每一次时钟中断, 都会走到这个地方.
+    // 所以 ,proc list, timer list ,都是被这个地方去 schedule
+    // 最主要的逻辑, 是执行 timer list
     bool intr_flag;
     local_intr_save(intr_flag);
     {

@@ -92,6 +92,9 @@ vfs_chdir(char *path) {
     int ret;
     struct inode *node;
     if ((ret = vfs_lookup(path, &node)) == 0) {
+        // :up: 上面做的事情, 是根据 path 获取到相应的 node.
+        //vfs_set_curdir - Set current directory as a inode.
+        // The passed inode must in fact be a directory.
         ret = vfs_set_curdir(node);
         vop_ref_dec(node);
     }

@@ -10,6 +10,7 @@
 
 static inline bool
 __intr_save(void) {
+    // disable interpret
     if (read_eflags() & FL_IF) {
         intr_disable();
         return 1;
@@ -19,6 +20,7 @@ __intr_save(void) {
 
 static inline void
 __intr_restore(bool flag) {
+    // disable interpret
     if (flag) {
         intr_enable();
     }

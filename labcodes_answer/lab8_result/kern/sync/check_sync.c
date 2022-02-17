@@ -83,8 +83,9 @@ semaphore_t s[N]; /* 每个哲学家一个信号量 */
 
 struct proc_struct *philosopher_proc_sema[N];
 
+// 临界区是在具体的 code 里面进行控制的, 而并非是在 Process 层面进行控制.
 void phi_test_sema(i) /* i：哲学家号码从0到N-1 */
-{ 
+{
     if(state_sema[i]==HUNGRY&&state_sema[LEFT]!=EATING
             &&state_sema[RIGHT]!=EATING)
     {
@@ -93,8 +94,18 @@ void phi_test_sema(i) /* i：哲学家号码从0到N-1 */
     }
 }
 
+void phi_test_condvar (i) {
+    if(state_condvar[i]==HUNGRY&&state_condvar[LEFT]!=EATING
+       &&state_condvar[RIGHT]!=EATING) {
+        cprintf("phi_test_condvar: state_condvar[%d] will eating\n",i);
+        state_condvar[i] = EATING ;
+        cprintf("phi_test_condvar: signal self_cv[%d] \n",i);
+        cond_signal(&mtp->cv[i]) ;
+    }
+}
+
 void phi_take_forks_sema(int i) /* i：哲学家号码从0到N-1 */
-{ 
+{
         down(&mutex); /* 进入临界区 */
         state_sema[i]=HUNGRY; /* 记录下哲学家i饥饿的事实 */
         phi_test_sema(i); /* 试图得到两只叉子 */
@@ -102,8 +113,29 @@ void phi_take_forks_sema(int i) /* i：哲学家号码从0到N-1 */
         down(&s[i]); /* 如果得不到叉子就阻塞 */
 }
 
+void phi_take_forks_condvar(int i) {
+    down(&(mtp->mutex));
+    //--------into routine in monitor--------------
+    // LAB7 EXERCISE1: YOUR CODE
+    // I am hungry
+    // try to get fork
+    // I am hungry
+    state_condvar[i]=HUNGRY; 
+    // try to get fork
+    phi_test_condvar(i); 
+    if (state_condvar[i] != EATING) {
+        cprintf("phi_take_forks_condvar: %d didn't get fork and will wait\n",i);
+        cond_wait(&mtp->cv[i]);
+    }
+    //--------leave routine in monitor--------------
+    if(mtp->next_count>0)
+        up(&(mtp->next));
+    else
+        up(&(mtp->mutex));
+}
+
 void phi_put_forks_sema(int i) /* i：哲学家号码从0到N-1 */
-{ 
+{
         down(&mutex); /* 进入临界区 */
         state_sema[i]=THINKING; /* 哲学家进餐结束 */
         phi_test_sema(LEFT); /* 看一下左邻居现在是否能进餐 */
@@ -111,14 +143,35 @@ void phi_put_forks_sema(int i) /* i：哲学家号码从0到N-1 */
         up(&mutex); /* 离开临界区 */
 }
 
+void phi_put_forks_condvar(int i) {
+    down(&(mtp->mutex));
+
+    //--------into routine in monitor--------------
+    // LAB7 EXERCISE1: YOUR CODE
+    // I ate over
+    // test left and right neighbors
+    // I ate over 
+    state_condvar[i]=THINKING;
+    // test left and right neighbors
+    phi_test_condvar(LEFT);
+    phi_test_condvar(RIGHT);
+    //--------leave routine in monitor--------------
+    if(mtp->next_count>0)
+        up(&(mtp->next));
+    else
+        up(&(mtp->mutex));
+}
+
 int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 */
 {
     int i, iter=0;
     i=(int)arg;
     cprintf("I am No.%d philosopher_sema\n",i);
-    while(iter++<TIMES)
-    { /* 无限循环 */
+    // TIMES = 4
+    while(iter++<TIMES) {
         cprintf("Iter %d, No.%d philosopher_sema is thinking\n",iter,i); /* 哲学家正在思考 */
+        // 这个地方开始与 timer 相关联.
+        // sleep_time = 10
         do_sleep(SLEEP_TIME);
         phi_take_forks_sema(i); 
         /* 需要两只叉子，或者阻塞 */
@@ -128,9 +181,30 @@ int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 
         /* 把两把叉子同时放回桌子 */
     }
     cprintf("No.%d philosopher_sema quit\n",i);
-    return 0;    
+    return 0;
 }
 
+
+int philosopher_using_condvar(void * arg)
+{ /* arg is the No. of philosopher 0~N-1*/
+
+    int i, iter=0;
+    i=(int)arg;
+    cprintf("I am No.%d philosopher_condvar\n",i);
+    while(iter++<TIMES)
+        { /* iterate*/
+            cprintf("Iter %d, No.%d philosopher_condvar is thinking\n",iter,i); /* thinking*/
+            do_sleep(SLEEP_TIME);
+            phi_take_forks_condvar(i); 
+            /* need two forks, maybe blocked */
+            cprintf("Iter %d, No.%d philosopher_condvar is eating\n",iter,i); /* eating*/
+            do_sleep(SLEEP_TIME);
+            phi_put_forks_condvar(i); 
+            /* return two forks back*/
+        }
+    cprintf("No.%d philosopher_condvar quit\n",i);
+    return 0;    
+}
 //-----------------philosopher problem using monitor ------------
 /*PSEUDO CODE :philosopher problem using monitor
  * monitor dp
@@ -169,97 +243,37 @@ struct proc_struct *philosopher_proc_condvar[N]; // N philosopher
 int state_condvar[N];                            // the philosopher's state: EATING, HUNGARY, THINKING  
 monitor_t mt, *mtp=&mt;                          // monitor
 
-void phi_test_condvar (i) { 
-    if(state_condvar[i]==HUNGRY&&state_condvar[LEFT]!=EATING
-            &&state_condvar[RIGHT]!=EATING) {
-        cprintf("phi_test_condvar: state_condvar[%d] will eating\n",i);
-        state_condvar[i] = EATING ;
-        cprintf("phi_test_condvar: signal self_cv[%d] \n",i);
-        cond_signal(&mtp->cv[i]) ;
-    }
-}
-
-
-void phi_take_forks_condvar(int i) {
-     down(&(mtp->mutex));
-//--------into routine in monitor--------------
-     // LAB7 EXERCISE1: YOUR CODE
-     // I am hungry
-     // try to get fork
-      // I am hungry
-      state_condvar[i]=HUNGRY; 
-      // try to get fork
-      phi_test_condvar(i); 
-      if (state_condvar[i] != EATING) {
-          cprintf("phi_take_forks_condvar: %d didn't get fork and will wait\n",i);
-          cond_wait(&mtp->cv[i]);
-      }
-//--------leave routine in monitor--------------
-      if(mtp->next_count>0)
-         up(&(mtp->next));
-      else
-         up(&(mtp->mutex));
-}
-
-void phi_put_forks_condvar(int i) {
-     down(&(mtp->mutex));
-
-//--------into routine in monitor--------------
-     // LAB7 EXERCISE1: YOUR CODE
-     // I ate over
-     // test left and right neighbors
-      // I ate over 
-      state_condvar[i]=THINKING;
-      // test left and right neighbors
-      phi_test_condvar(LEFT);
-      phi_test_condvar(RIGHT);
-//--------leave routine in monitor--------------
-     if(mtp->next_count>0)
-        up(&(mtp->next));
-     else
-        up(&(mtp->mutex));
-}
-
 //---------- philosophers using monitor (condition variable) ----------------------
-int philosopher_using_condvar(void * arg) { /* arg is the No. of philosopher 0~N-1*/
-  
-    int i, iter=0;
-    i=(int)arg;
-    cprintf("I am No.%d philosopher_condvar\n",i);
-    while(iter++<TIMES)
-    { /* iterate*/
-        cprintf("Iter %d, No.%d philosopher_condvar is thinking\n",iter,i); /* thinking*/
-        do_sleep(SLEEP_TIME);
-        phi_take_forks_condvar(i); 
-        /* need two forks, maybe blocked */
-        cprintf("Iter %d, No.%d philosopher_condvar is eating\n",iter,i); /* eating*/
-        do_sleep(SLEEP_TIME);
-        phi_put_forks_condvar(i); 
-        /* return two forks back*/
-    }
-    cprintf("No.%d philosopher_condvar quit\n",i);
-    return 0;    
-}
 
 void check_sync(void){
 
     int i;
 
     //check semaphore
+    // 基于信号量
+    // 信号量为 1, 初始化 mutex, 具体的做法是初始化 struct 为 sem 的 mutex 里面的 wait_queue
     sem_init(&mutex, 1);
     for(i=0;i<N;i++){
+        // 哲学家们. 信号量的 value 初始化为0, 并且将每一个 sem 的 mutex 的 wait_queue 初始化.
         sem_init(&s[i], 0);
+        // 这个地方, 进程和信号量是如何结合起来的?
+        // 推测是 kernel thread 的时候, 被 timer 来遍历的.
         int pid = kernel_thread(philosopher_using_semaphore, (void *)i, 0);
         if (pid <= 0) {
             panic("create No.%d philosopher_using_semaphore failed.\n");
         }
+        // 根据 pid 获取到 proc 的地址.
         philosopher_proc_sema[i] = find_proc(pid);
+        // 设置上 proc 的名称.
         set_proc_name(philosopher_proc_sema[i], "philosopher_sema_proc");
     }
 
     //check condition variable
+    // 基于管程
+    // 稍微阅读了一下代码, 管程的实现, 实际上是基于信号量. 只不过, 是把信号量的逻辑抽象到一个管理过程当中去了.
+    // 上面的理解是错误的.
     monitor_init(&mt, N);
-    for(i=0;i<N;i++){
+    for(i=0;i<N;i++) {
         state_condvar[i]=THINKING;
         int pid = kernel_thread(philosopher_using_condvar, (void *)i, 0);
         if (pid <= 0) {

@@ -7,6 +7,18 @@
 #include <kmalloc.h>
 #include <error.h>
 
+/*
+ * step1:
+ * 开始阅读这一章最主要的问题就是. 这个东西的位置是什么?
+ * 在 proc 的过程当中, 每一个 proc 都会有相应的 file.
+ * 然后进行 file create.
+ * 然后 file create 的时候, 存在 fs, file, vfs, sfs
+ * 这些的区别是什么? 调用链是如何工作的?
+ * 这个是首先要去进行阅读的.
+ *
+ * 而,最主要的, 就是 iload 的这个 function到底是如何工作的, 我们把它补齐.
+ */
+
 static semaphore_t bootfs_sem;
 static struct inode *bootfs_node = NULL;
 
@@ -64,6 +76,8 @@ vfs_set_bootfs(char *fsname) {
             return -E_INVAL;
         }
         int ret;
+        // vfs_lookup: Set current directory, as a pathname. Use vfs_lookup to translate
+        // it to a inode.
         if ((ret = vfs_chdir(fsname)) != 0) {
             return ret;
         }

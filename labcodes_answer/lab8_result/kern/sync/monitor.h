@@ -66,13 +66,17 @@
 
 typedef struct monitor monitor_t;
 
-typedef struct condvar{
+// 这个两个数据结构纠缠程度让人纠结.
+// condvar 里面使用 monitor_t , 也就是 monitor.
+// monitor 里面, 又存在 condvar.
+// 像是一个 struct 层面的双向链表. condvar 被 monitor 指向, 然后 condvar 又将 monitor 作为自己的 parent
+typedef struct condvar {
     semaphore_t sem;        // the sem semaphore  is used to down the waiting proc, and the signaling proc should up the waiting proc
     int count;              // the number of waiters on condvar
     monitor_t * owner;      // the owner(monitor) of this condvar
 } condvar_t;
 
-typedef struct monitor{
+typedef struct monitor {
     semaphore_t mutex;      // the mutex lock for going into the routines in monitor, should be initialized to 1
     semaphore_t next;       // the next semaphore is used to down the signaling proc itself, and the other OR wakeuped waiting proc should wake up the sleeped signaling proc.
     int next_count;         // the number of of sleeped signaling proc

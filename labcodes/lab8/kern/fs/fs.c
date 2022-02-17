@@ -11,6 +11,7 @@
 void
 fs_init(void) {
     vfs_init();
+    // device init
     dev_init();
     sfs_init();
 }
